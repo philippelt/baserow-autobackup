@@ -1,0 +1,17 @@
+# Example file, must be customized with you own list of projects and DB/App IDs in each project
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: auto-backup
+  namespace: baserow
+data:
+  CONFIG: |
+    retention: 10
+    backups:
+    - project: ProjectA
+      ids:
+      - 18
+    - project: ProjectB
+      ids:
+      - 201
+      - 112

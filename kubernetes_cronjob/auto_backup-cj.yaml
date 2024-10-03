@@ -1,0 +1,32 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: auto-backup
+  namespace: baserow
+spec:
+  schedule: "0 3 * * *"
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 2
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      template:
+        spec:
+          imagePullSecrets:
+          - name: regcred
+          containers:
+          - name: auto-backup
+            image: <image_path>/auto_backup
+            imagePullPolicy: Always
+            envFrom:
+            - secretRef:
+                name: auto-backup
+            - configMapRef:
+                name: auto-backup
+            command:
+            - python3
+            - -u
+            - auto_backup.py
+            - -t
+          restartPolicy: Never
