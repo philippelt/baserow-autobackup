@@ -3,7 +3,7 @@ export BASEROW_PWD=<baserow password>
 export BASEROW_EMAIL=<baserow email>
 export BASEROW_API_URL=https://<your.baserow.host>/api/
 
-./cli_backup.py $@
+./cli_backup.py "$@"
 
 # Example use: List backups of database 225 (from project X)
 # ./clibackup.sh 225 list

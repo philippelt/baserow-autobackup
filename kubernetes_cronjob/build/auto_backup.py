@@ -32,12 +32,12 @@ def get_access_token(email, username, password):
         log.error(f"Auth error : {e}")
         return "error"
 
-def list_snapshots(access_token, id, prefix=None):
+def list_snapshots(access_token, dbId, prefix=None):
     """List snapshots for a given database id, return list of {"date":,"name":} of existing snapshots
     """
     result = []
     try:
-        r = requests.get(f"{baserow_api_url}snapshots/application/{id}/",
+        r = requests.get(f"{baserow_api_url}snapshots/application/{dbId}/",
                           headers={ "Authorization":f"JWT {access_token}"},
                           timeout=30).json()
         for s in r:
@@ -48,48 +48,58 @@ def list_snapshots(access_token, id, prefix=None):
         log.error(f"List snapshots error : {e}")
         return "error"
 
-def take_backup(access_token, id, name):
+def take_backup(access_token, dbId, name):
     """Create a snapshot of the given database id with the given name
        For ease of use in the GUI, the name should contain the backup date
+       the function wait for the backup job to complete before return
     """
     if DRY_RUN:
-        log.info(f"DRY: Request to take snapshot of {id}")
+        log.info(f"DRY: Request to take snapshot of {dbId}")
         return "OK"
     try:
-        r = requests.post(f"{baserow_api_url}snapshots/application/{id}/",
+        r = requests.post(f"{baserow_api_url}snapshots/application/{dbId}/",
                           headers={ "Authorization":f"JWT {access_token}"},
                           data={"name":name},
                           timeout=30).json()
-        return r
+        if "error" in r:
+            raise Exception(f'Backup error : {r["error"]}/{r["detail"]}')
+        for t in range(10):
+            time.sleep(4*t)
+            s = job_status(access_token, r["id"])
+            if s == "error":
+                raise Exception(f'Job status error {r["id"]}')
+            if s["state"] == "finished" : return r
+        raise Exception("Backup still running")
     except Exception as e:
         log.error(f"Create snapshots error : {e}")
         return "error"
 
-def find_snapshot(access_token, id, name):
+def find_snapshot(access_token, snapshotId, name):
     """Find a snapshot id corresponding to given name"""
-    res = list_snapshots(access_token, id)
+    res = list_snapshots(access_token, snapshotId)
     if res == "error": return res
     for s in res:
         if s["name"].startswith(name): return s["id"]
     return None
 
 def delete_snapshot(access_token, snapshotId):
-    """Delete a snapshot identified by the giver snapshotId"""
+    """Delete a snapshot identified by the given snapshotId"""
     if DRY_RUN:
-        log.info(f"DRY: Request to delete snapshotId {id}")
+        log.info(f"DRY: Request to delete snapshotId {snapshotId}")
         return "OK"
     try:
         r = requests.delete(f"{baserow_api_url}snapshots/{snapshotId}/",
                             headers={ "Authorization":f"JWT {access_token}"},
                             timeout=30)
+        time.sleep(5)
         return r
     except Exception as e:
         log.error(f"Delete snapshots error : {e}")
         return "error"
 
-def find_oldest_snapshot(access_token, id, prefix=None):
+def find_oldest_snapshot(access_token, dbId, prefix=None):
     """Locate the id of the oldest snapshot"""
-    res = list_snapshots(access_token, id, prefix)
+    res = list_snapshots(access_token, dbId, prefix)
     if res == "error": return res
     if res:
         oldestDate = res[0]["date"]
@@ -103,21 +113,31 @@ def find_oldest_snapshot(access_token, id, prefix=None):
         return oldestId, oldestDate, oldestName
     return None
 
-def purge_snapshots(access_token, id, retention, prefix="Autobackup "):
+def purge_snapshots(access_token, dbId, retention, prefix="Autobackup "):
     """Delete the oldest snapshot if the number of autobackups is above retention"""
-    res = list_snapshots(access_token, id, prefix)
+    res = list_snapshots(access_token, dbId, prefix)
     if res == "error" : return res
     nb = len(res)
     if nb < 1:
         log.warning(f"Snapshots enumeration error for {id}")
     elif nb > retention:
-        res = find_oldest_snapshot(access_token, id, prefix)
+        res = find_oldest_snapshot(access_token, dbId, prefix)
         if res in ("error", None): return res
         snapshotId, _, snapName = res
         log.info(f"\t-> Purge {snapName}")
         res = delete_snapshot(access_token, snapshotId)
         if res == "error": return res
     return None
+
+def job_status(access_token, jobId):
+    try:
+        r = requests.get(f"{baserow_api_url}jobs/{jobId}/",
+                        headers={ "Authorization":f"JWT {access_token}"},
+                        timeout=30).json()
+        return r
+    except Exception as e:
+        log.error(f"Job status error : {e}")
+        return "error"
 
 
 def main():
@@ -132,10 +152,11 @@ def main():
 
     setup = yaml.load(os.getenv("CONFIG"), Loader=yaml.Loader)
     retention = setup["retention"]
-    log.info(f"Retention {retention} days")
+    log.info(f"Default retention {retention} days")
 
     for b in setup["backups"]:
-        log.info(f'Processing {b["project"]}')
+        keep = b.get("retention", retention)
+        log.info(f'Processing {b["project"]}, retention {keep}')
 
         token = get_access_token( creds["email"], creds["username"], creds["password"])
         if token == "error":
@@ -153,8 +174,7 @@ def main():
                 if res == "error":
                     log.error("BACKUP FAILURE :")
                     return 1
-                DRY_RUN or time.sleep(60)
-                res = purge_snapshots(token, i, retention)
+                res = purge_snapshots(token, i, keep)
                 if res == "error":
                     log.error("PURGE ERROR")
 

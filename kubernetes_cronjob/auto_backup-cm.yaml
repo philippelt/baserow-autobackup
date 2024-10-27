@@ -6,12 +6,16 @@ metadata:
   namespace: baserow
 data:
   CONFIG: |
-    retention: 10
+    retention: 10 # Global default retention
     backups:
     - project: ProjectA
       ids:
       - 18
     - project: ProjectB
+      retention: 3 # Optional project level retention
       ids:
       - 201
       - 112
+    - project: ProjectC
+      ids:
+      - 199
