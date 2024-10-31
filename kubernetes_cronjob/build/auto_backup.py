@@ -64,12 +64,13 @@ def take_backup(access_token, dbId, name):
         if "error" in r:
             raise Exception(f'Backup error : {r["error"]}/{r["detail"]}')
         for t in range(10):
-            time.sleep(4*t)
+            time.sleep(5*t)
             s = job_status(access_token, r["id"])
             if s == "error":
                 raise Exception(f'Job status error {r["id"]}')
             if s["state"] == "finished" : return r
-        raise Exception("Backup still running")
+        log.warning("Backup still running")
+        return s
     except Exception as e:
         log.error(f"Create snapshots error : {e}")
         return "error"
