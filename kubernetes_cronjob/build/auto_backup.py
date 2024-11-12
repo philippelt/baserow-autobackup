@@ -40,6 +40,8 @@ def list_snapshots(access_token, dbId, prefix=None):
         r = requests.get(f"{baserow_api_url}snapshots/application/{dbId}/",
                           headers={ "Authorization":f"JWT {access_token}"},
                           timeout=30).json()
+        if "error" in r:
+            raise Exception(f'Backup list error : {r["error"]}/{r["detail"]}')
         for s in r:
             if prefix and not s["name"].startswith(prefix): continue
             result.append({"id":s["id"], "date":datetime.fromisoformat(s["created_at"][:-1]+'+00:00'), "name":s["name"]})
